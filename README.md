@@ -259,8 +259,8 @@ terraform output
 ```
 
 ```
-master_public_ip = "44.200.157.180"
-kubeconfig_command = "ssh -i ~/.ssh/k3s-cluster ubuntu@44.200.157.180 'sudo cat /etc/rancher/k3s/k3s.yaml'"
+master_public_ip = "XX.XXX.XXX.XXX"
+kubeconfig_command = "ssh -i ~/.ssh/k3s-cluster ubuntu@XX.XXX.XXX.XXX 'sudo cat /etc/rancher/k3s/k3s.yaml'"
 ```
 
 ### Step 2: Access K3s Cluster
