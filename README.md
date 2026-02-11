@@ -17,6 +17,8 @@ This project demonstrates:
 - **Containerized microservices** with Docker
 - **Service-to-service communication** within Kubernetes
 - **NodePort services** for external access
+- **Monitoring with Prometheus** (optional)
+- **Kubernetes Dashboard** for visualization (optional)
 
 ## 📐 Architecture
 
@@ -92,11 +94,6 @@ Provide:
 - **AWS Secret Access Key**: `YOUR_SECRET_ACCESS_KEY`
 - **Default region**: `us-east-1`
 - **Output format**: `json`
-
-> **Note**: Alternatively, you can run the provided setup script to automate configuration safely:
-> ```bash
-> ./scripts/setup-aws.sh
-> ```
 
 ### 4. Docker Hub Account
 
@@ -411,6 +408,214 @@ curl http://$MASTER_IP:30080/data
 
 ---
 
+## 📊 Monitoring & Management (Optional)
+
+### Step 7: Install Kubernetes Dashboard
+
+The [Kubernetes Dashboard](https://kubernetes.io/docs/tasks/access-application-cluster/web-ui-dashboard/) provides a web UI for cluster visualization.
+
+```bash
+# Install dashboard
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.7.0/aio/deploy/recommended.yaml \
+  --insecure-skip-tls-verify
+
+# Create admin service account
+cat <<EOF | kubectl apply -f - --insecure-skip-tls-verify
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: admin-user
+  namespace: kubernetes-dashboard
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: admin-user
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: admin-user
+  namespace: kubernetes-dashboard
+EOF
+
+# Get access token
+kubectl -n kubernetes-dashboard create token admin-user --insecure-skip-tls-verify
+
+# Start kubectl proxy
+kubectl proxy --insecure-skip-tls-verify
+```
+
+**Access Dashboard**:
+Visit: [http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/](http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/)
+
+Paste the token when prompted.
+
+**⚠️ Note**: Dashboard is **resource-intensive** on t3.micro. Consider removing after exploration:
+```bash
+kubectl delete namespace kubernetes-dashboard --insecure-skip-tls-verify
+```
+
+### Step 8: Install Prometheus Monitoring
+
+[Prometheus](https://prometheus.io/) provides metrics collection and monitoring for your cluster.
+
+```bash
+# Create monitoring namespace
+kubectl create namespace monitoring --insecure-skip-tls-verify
+
+# Install Prometheus Operator
+kubectl apply -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/bundle.yaml \
+  --insecure-skip-tls-verify
+
+# Wait for CRDs to be ready
+sleep 30
+
+# Create ServiceAccount and RBAC
+cat <<EOF | kubectl apply -f - --insecure-skip-tls-verify
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+rules:
+- apiGroups: [""]
+  resources:
+  - nodes
+  - services
+  - endpoints
+  - pods
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources:
+  - configmaps
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+- kind: ServiceAccount
+  name: prometheus
+  namespace: monitoring
+EOF
+
+# Deploy Prometheus instance
+cat <<EOF | kubectl apply -f - --insecure-skip-tls-verify
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  serviceAccountName: prometheus
+  replicas: 1
+  resources:
+    requests:
+      memory: 200Mi
+      cpu: 100m
+    limits:
+      memory: 400Mi
+      cpu: 200m
+EOF
+
+# Expose Prometheus UI
+kubectl port-forward -n monitoring svc/prometheus-operated 9090:9090 --insecure-skip-tls-verify
+```
+
+**Access Prometheus**: [http://localhost:9090](http://localhost:9090)
+
+**⚠️ Note**: Prometheus is **resource-intensive** on t3.micro. Monitor with `kubectl top nodes` and remove if cluster struggles:
+```bash
+kubectl delete namespace monitoring --insecure-skip-tls-verify
+```
+
+---
+
+## 🧪 Testing & Validation
+
+### Comprehensive Application Tests
+
+```bash
+# Get master public IP
+MASTER_IP=$(cd terraform && terraform output -raw master_public_ip)
+
+# Get NodePort
+NODE_PORT=$(kubectl get svc frontend-service -o jsonpath='{.spec.ports[0].nodePort}' --insecure-skip-tls-verify)
+
+# Test 1: Frontend service (NodePort)
+echo "Testing frontend..."
+curl http://$MASTER_IP:$NODE_PORT/
+
+# Test 2: Backend connectivity through frontend
+echo "Testing backend via frontend..."
+curl http://$MASTER_IP:$NODE_PORT/data
+
+# Test 3: Check pod logs
+echo "Frontend logs:"
+kubectl logs -l app=frontend --tail=20 --insecure-skip-tls-verify
+
+echo "Backend logs:"
+kubectl logs -l app=backend --tail=20 --insecure-skip-tls-verify
+
+# Test 4: Scaling
+echo "Testing horizontal scaling..."
+kubectl scale deployment frontend-deployment --replicas=3 --insecure-skip-tls-verify
+kubectl scale deployment backend-deployment --replicas=3 --insecure-skip-tls-verify
+
+# Wait and verify
+sleep 15
+kubectl get pods --insecure-skip-tls-verify
+
+# Test 5: Pod health and readiness
+kubectl describe pod -l app=frontend --insecure-skip-tls-verify | grep -A 5 "Conditions:"
+kubectl describe pod -l app=backend --insecure-skip-tls-verify | grep -A 5 "Conditions:"
+
+# Test 6: Service endpoints
+kubectl get endpoints --insecure-skip-tls-verify
+
+# Test 7: Load test (simple)
+echo "Running simple load test..."
+for i in {1..10}; do
+  curl -s http://$MASTER_IP:$NODE_PORT/data &
+done
+wait
+echo "Load test complete"
+
+# Scale back down to save resources
+kubectl scale deployment frontend-deployment --replicas=1 --insecure-skip-tls-verify
+kubectl scale deployment backend-deployment --replicas=1 --insecure-skip-tls-verify
+```
+
+### Resource Monitoring
+
+```bash
+# Check resource usage
+kubectl top nodes --insecure-skip-tls-verify
+kubectl top pods --insecure-skip-tls-verify
+
+# Check events
+kubectl get events --sort-by='.lastTimestamp' --insecure-skip-tls-verify
+
+# Describe deployments
+kubectl describe deployment backend-deployment --insecure-skip-tls-verify
+kubectl describe deployment frontend-deployment --insecure-skip-tls-verify
+```
+
+---
+
 ## 🔍 Troubleshooting
 
 ### Issue: `kubectl` commands timeout
@@ -503,23 +708,47 @@ sudo systemctl status k3s
 
 ## 🧹 Cleanup
 
-**Destroy all AWS resources**:
+### Delete Kubernetes Resources
+
+```bash
+# Delete microservices
+kubectl delete -f kubernetes/manifests/ --insecure-skip-tls-verify
+
+# Delete monitoring (if installed)
+kubectl delete namespace monitoring --insecure-skip-tls-verify
+
+# Delete dashboard (if installed)
+kubectl delete namespace kubernetes-dashboard --insecure-skip-tls-verify
+```
+
+### Destroy AWS Infrastructure
+
 ```bash
 cd terraform
 terraform destroy -auto-approve
 ```
 
-**Delete SSH key from AWS**:
+Confirm by typing `yes` when prompted.
+
+### Cleanup Local Files
+
 ```bash
+# Delete SSH key from AWS
 aws ec2 delete-key-pair --key-name k3s-cluster --region us-east-1
-```
 
-**Delete local kubeconfig**:
-```bash
+# Delete local SSH keys (optional)
+rm ~/.ssh/k3s-cluster ~/.ssh/k3s-cluster.pub
+
+# Delete kubeconfig
 rm ~/.kube/k3s-config
+
+# Unset environment variable
+unset KUBECONFIG
 ```
 
-**Estimated Cost**: $0 (Free Tier) or ~$7/month for t3.micro if you exceed Free Tier hours
+**Estimated Cost**: 
+- **Free Tier**: $0 (750 hours/month t3.micro)
+- **Beyond Free Tier**: ~$0.01/hour (~$7/month) for t3.micro
 
 ---
 
@@ -530,11 +759,15 @@ rm ~/.kube/k3s-config
 - [Terraform AWS Provider](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
 - [Kubernetes Documentation](https://kubernetes.io/docs/home/)
 - [Docker Documentation](https://docs.docker.com/)
+- [Prometheus Operator](https://prometheus-operator.dev/)
+- [Kubernetes Dashboard](https://kubernetes.io/docs/tasks/access-application-cluster/web-ui-dashboard/)
 
 ### Related Guides
 - [AWS Free Tier Details](https://aws.amazon.com/free/)
 - [kubectl Cheat Sheet](https://kubernetes.io/docs/reference/kubectl/cheatsheet/)
 - [Docker Multi-platform Builds](https://docs.docker.com/build/building/multi-platform/)
+- [K3s Quick Start Guide](https://docs.k3s.io/quick-start)
+- [Terraform Best Practices](https://www.terraform-best-practices.com/)
 
 ### Useful Commands
 
@@ -544,14 +777,18 @@ terraform fmt        # Format code
 terraform validate   # Validate syntax
 terraform show       # Show current state
 terraform output     # Show outputs
+terraform refresh    # Sync state with real infrastructure
 ```
 
 **kubectl**:
 ```bash
 kubectl get all -A --insecure-skip-tls-verify           # All resources
 kubectl logs <POD_NAME> --insecure-skip-tls-verify      # Pod logs
+kubectl logs -f <POD_NAME> --insecure-skip-tls-verify   # Follow logs
 kubectl exec -it <POD_NAME> -- /bin/sh --insecure-skip-tls-verify  # Shell into pod
 kubectl describe node k3s-master --insecure-skip-tls-verify        # Node details
+kubectl top nodes --insecure-skip-tls-verify            # Resource usage
+kubectl top pods --insecure-skip-tls-verify             # Pod resource usage
 ```
 
 **Docker**:
@@ -559,6 +796,15 @@ kubectl describe node k3s-master --insecure-skip-tls-verify        # Node detail
 docker ps                    # Running containers
 docker images                # Local images
 docker system prune -a       # Clean up everything
+docker buildx ls             # List builders
+docker login                 # Login to Docker Hub
+```
+
+**AWS CLI**:
+```bash
+aws ec2 describe-instances   # List EC2 instances
+aws ec2 describe-key-pairs   # List key pairs
+aws ec2 describe-vpcs        # List VPCs
 ```
 
 ---
@@ -593,6 +839,26 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [HashiCorp](https://www.hashicorp.com/) for Terraform
 - [AWS](https://aws.amazon.com/) for cloud infrastructure
 - Kubernetes community
+- [Prometheus](https://prometheus.io/) and CNCF for monitoring tools
+
+---
+
+## 🎓 Learning Resources
+
+### Video Tutorials
+- [Terraform Tutorial for Beginners](https://www.youtube.com/watch?v=SLB_c_ayRMo)
+- [Kubernetes Crash Course](https://www.youtube.com/watch?v=X48VuDVv0do)
+- [K3s vs K8s: What's the Difference?](https://www.youtube.com/watch?v=2LNxGVS81mE)
+
+### Books
+- **Kubernetes in Action** by Marko Lukša
+- **Terraform: Up & Running** by Yevgeniy Brikman
+- **The DevOps Handbook** by Gene Kim
+
+### Online Courses
+- [Kubernetes for the Absolute Beginners](https://www.udemy.com/course/learn-kubernetes/)
+- [Terraform Associate Certification](https://www.hashicorp.com/certification/terraform-associate)
+- [AWS Certified Solutions Architect](https://aws.amazon.com/certification/certified-solutions-architect-associate/)
 
 ---
 
