@@ -88,10 +88,15 @@ aws configure
 ```
 
 Provide:
-- **AWS Access Key ID**: `AKIAIOSFODNN7EXAMPLE`
-- **AWS Secret Access Key**: `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY`
+- **AWS Access Key ID**: `YOUR_ACCESS_KEY_ID`
+- **AWS Secret Access Key**: `YOUR_SECRET_ACCESS_KEY`
 - **Default region**: `us-east-1`
 - **Output format**: `json`
+
+> **Note**: Alternatively, you can run the provided setup script to automate configuration safely:
+> ```bash
+> ./scripts/setup-aws.sh
+> ```
 
 ### 4. Docker Hub Account
 
