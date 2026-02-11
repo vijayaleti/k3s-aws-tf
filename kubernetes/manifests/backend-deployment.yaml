@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: backend
-        image: valeti1/backend-service:v1
+        image: YOUR_DOCKERHUB_USERNAME/backend-service:v1
         ports:
         - containerPort: 5001
         resources:

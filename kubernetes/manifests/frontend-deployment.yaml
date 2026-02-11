@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: valeti1/frontend-service:v1
+        image: YOUR_DOCKERHUB_USERNAME/frontend-service:v1
         ports:
         - containerPort: 5000
         env:

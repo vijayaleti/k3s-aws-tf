@@ -145,7 +145,7 @@ docker buildx build --platform linux/amd64 -t YOUR_DOCKERHUB_USERNAME/frontend-s
 # 8. Update manifests with your Docker Hub username
 # Edit kubernetes/manifests/backend-deployment.yaml
 # Edit kubernetes/manifests/frontend-deployment.yaml
-# Change: image: valeti1/backend-service:v1 → YOUR_USERNAME/backend-service:v1
+# Change: image: YOUR_DOCKERHUB_USERNAME/backend-service:v1 → YOUR_USERNAME/backend-service:v1
 
 # 9. Deploy microservices
 cd ../..
