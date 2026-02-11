@@ -48,4 +48,31 @@ terraform.rc
 .vscode/
 *.swp
 
+# Sensitive Keys & Credentials
+*.pem
+*.pub
+*.key
+*.p12
+*.pfx
+*.asc
+id_rsa
+id_rsa.pub
+
+# AWS Credentials
+.aws/
+source_me.sh
+credentials
+config
+aws_config
+aws_credentials
+access_keys.csv
+rootkey.csv
+
+# Kubernetes Config
+kubeconfig
+k3s.yaml
+config
+.kube/
+
+
 
